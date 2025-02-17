@@ -31,7 +31,7 @@ A sophisticated AI-powered chatbot that interacts with an Oracle database to pro
 
 1. **Clone the Repository**
    ```sh
-   git clone https://github.com/ahmedali703/AI-Agent.git
+   git clone https://github.com/ahmedali703/Oracle-AI-Agent.git
    cd your-repo-name
    ```
 
