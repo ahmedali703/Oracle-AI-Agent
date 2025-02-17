@@ -47,10 +47,10 @@ app = Flask(__name__)
 CORS(app, supports_credentials=True)  
 
 
-# إعداد مفتاح سري للجلسات
-app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))  # مفتاح آمن
+# Setting a Secret Key for Sessions
+app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32)) 
 
-# إعداد Flask-Session لاستخدام Redis
+# **Configuring Flask-Session to Use Redis**
 app.config["SESSION_TYPE"] = "redis"
 app.config["SESSION_REDIS"] = redis.from_url("redis://localhost:6379") 
 app.config["SESSION_PERMANENT"] = False
@@ -58,7 +58,7 @@ app.config["SESSION_USE_SIGNER"] = True
 
 Session(app)
 
-# ===== إعداد اتصال أوراكل =====
+# ===== Setting Up Oracle Connection =====
 os.environ["NLS_LANG"] = "AMERICAN_AMERICA.AL32UTF8"
 os.environ["TNS_ADMIN"] = r"C:\app\Mopa\product\21c\dbhomeXE\instantclient"
 
@@ -66,7 +66,7 @@ try:
     connection = oracledb.connect(
         user=os.getenv("ORACLE_USER", "HR"),
         password=os.getenv("ORACLE_PASSWORD", "HR"),
-        dsn=os.getenv("ORACLE_DSN", "localhost/xepdb1")  # تأكد من صحة الـ SID أو Service Name
+        dsn=os.getenv("ORACLE_DSN", "localhost/xepdb1")  # Service Name
     )
     print("Successfully connected to Oracle database.")
 except Exception as e:
@@ -74,13 +74,13 @@ except Exception as e:
     connection = None
 
 # SQLAlchemy
-# استخدام الـ Service Name في سلسلة الاتصال
+# Using the Service Name in the Connection String
 engine = create_engine(os.getenv("SQLALCHEMY_DATABASE_URI", "oracle+oracledb://HR:HR@localhost/?service_name=xepdb1"))
 SessionLocal = sessionmaker(bind=engine)
 metadata = MetaData(naming_convention={"skip_sorted_tables": True})
 Base = declarative_base()
 
-# نموذج المستخدم
+# User Model
 class User(Base):
     __tablename__ = 'users'
     
@@ -88,43 +88,38 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False)
     password = Column(String(255), nullable=False)
 
-    # تعريف نموذج المحادثة
+    # **Defining the Conversation Model**
 class Conversation(Base):
     __tablename__ = 'conversations'
     conversation_id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    question = Column(Text, nullable=False)  # يمكنك استخدام Text أو CLOB للبيانات الكبيرة
+    question = Column(Text, nullable=False)  # You can use Text or CLOB for large data
     response = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
-    feedback = Column(Text)  # حقل نصي لتخزين التعليقات
-    classification = Column(String(100))  # الحقل الجديد لتخزين التصنيف
+    feedback = Column(Text)  # Text field for storing comments
+    classification = Column(String(100))  # New field for storing classification
 
     user = relationship("User", backref="conversations")
 
-# تعريف نموذج التغذية الراجعة
+# Defining the Feedback Model
 class Feedback(Base):
     __tablename__ = 'feedback'
     feedback_id = Column(Integer, primary_key=True, index=True)
     conversation_id = Column(Integer, ForeignKey('conversations.conversation_id'), nullable=False)
-    rating_type = Column(Integer)  # تقييم رقمي مثلًا من 1 إلى 5
-    comments = Column(Text)  # حقل نصي للتعليقات
+    rating_type = Column(Integer)  # Numeric rating, for example, from 1 to 5
+    comments = Column(Text)  # Text field for comments
 
     conversation = relationship("Conversation", backref="feedbacks")
 
-
-# إنشاء الجداول إذا لم تكن موجودة
+# Create tables if they do not exist
 Base.metadata.create_all(bind=engine)
 
-# إعداد OpenAI
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  # تهيئة العميل الجديد
+# Configuring OpenAI
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))  
 lang_client = LangOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-
-
 smtplib.debuglevel = 1
-
-
-# إعداد تسجيل الأحداث (Logging)
+# Setting Up Event Logging
 logging.basicConfig(level=logging.ERROR , format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -166,52 +161,52 @@ class InputAgent(AgentBase):
 
 
 # ====================================================================
-# الدوال المساعدة
+# Helper Functions
 # ====================================================================
-# إنشاء PromptTemplate أساسي لتحسين الاستعلام (يمكن استخدامه في سلاسل LangChain)
+# Creating a Basic PromptTemplate for Query Enhancement (Usable in LangChain Pipelines)
 prompt_template = PromptTemplate.from_template(
-    "قم بتحسين الاستعلام التالي بناءً على السياق:\n"
-    "السياق: {context}\n"
-    "الاستعلام: {query}\n"
-    "رسالة الخطأ: {error_message}\n"
-    "الاستعلام المحسن:"
+    "Improve the following query based on the context:\n"
+    "Context: {context}\n"
+    "Query: {query}\n"
+    "Error Message: {error_message}\n"
+    "Improved Query:"
 )
-# باستخدام عامل الـ pipe لتحويل القالب إلى Runnable باستخدام lang_client
+# Using the pipe operator to convert the template into a Runnable with lang_client
 llm_chain = prompt_template | lang_client
 
 def self_reflect_and_replan(query: str, error_message: str, context: dict) -> str:
     """
-    تستخدم هذه الدالة سلسلة LLM لإعادة صياغة الاستعلام بناءً على رسالة الخطأ والسياق.
+    This function uses an LLM chain to reformulate the query based on the error message and context.
     """
-    # استخدام متغير manual_prompt بدلاً من متغير غير معرف
+    # Use the variable manual_prompt instead of an undefined variable
     escaped_context = str(context).replace("{", "{{").replace("}", "}}")
     manual_prompt = f"""
-لقد تم تنفيذ الاستعلام التالي:
+The following query has been executed:
 {query}
 
-ولكن ظهرت المشكلة التالية:
+However, the following issue occurred:
 {error_message}
 
-مع العلم بالسياق: {escaped_context}
+Considering the context: {escaped_context}
 
-قم بتوليد استعلام معدل يأخذ بعين الاعتبار تحسين بناء الجملة وأي مقترحات لتحسين الأداء.
+Generate a revised query that considers syntax improvement and any suggestions for performance enhancement.
 """
-    # إنشاء سلسلة جديدة باستخدام النص الكامل للـ prompt مع lang_client
+    # Create a new chain using the full prompt text with lang_client
     manual_chain = PromptTemplate.from_template(manual_prompt) | lang_client
     new_query = manual_chain.invoke({})
     return new_query.strip()
 
 def is_response_satisfactory(response: str) -> bool:
     """
-    تتحقق هذه الدالة مما إذا كانت الاستجابة مرضية (غير فارغة ولا تحتوي على كلمة "error").
+    This function checks whether the response is satisfactory (not empty and does not contain the word "error").
     """
     return bool(response.strip()) and "error" not in response.lower()
 
 def auto_recursive_reasoning(prompt: str, max_depth=3, current_depth=0) -> str:
     """
-    تطبيق استدلال تكراري لتحسين الاستجابة؛ إذا كانت الاستجابة غير مرضية يتم إعادة صياغة الـ prompt
-    وإعادة المحاولة حتى الوصول إلى استجابة جيدة أو انتهاء عدد التكرارات.
-    يقوم الكود بهروب الأقواس في prompt لتجنب تفسيرها كمتغيرات.
+    Apply iterative reasoning to improve the response; if the response is unsatisfactory, reformulate the prompt
+    And retry until a satisfactory response is achieved or the maximum number of iterations is reached.
+    The code escapes brackets in the prompt to prevent them from being interpreted as variables.
     """
     escaped_prompt = prompt.replace("{", "{{").replace("}", "}}")
     chain = PromptTemplate.from_template(escaped_prompt) | lang_client
@@ -219,15 +214,15 @@ def auto_recursive_reasoning(prompt: str, max_depth=3, current_depth=0) -> str:
     if is_response_satisfactory(response) or current_depth >= max_depth:
         return response.strip()
     else:
-        new_prompt = f"راجع الاستجابة التالية وحسنها:\n{response}\nمع الأخذ في الاعتبار: {prompt}"
+        new_prompt = f"Review the following response and improve it:\n{response}\nConsidering: {prompt}"
         return auto_recursive_reasoning(new_prompt, max_depth, current_depth + 1)
 
 
 def generate_empty_result_response(question: str) -> str:
     """
-    توليد رد طبيعي عندما يُرجع الاستعلام DataFrame فارغ.
-    يقوم هذا الدالة بإرسال prompt إلى ChatGPT لتحليل السؤال وتقديم إجابة عامة 
-    تُشير إلى عدم وجود بيانات مطابقة، دون استخدام أسماء حقول ثابتة وبصيغة Markdown.
+    Generate a natural response when the query returns an empty DataFrame.
+    This function sends a prompt to ChatGPT to analyze the question and provide a general response 
+   Indicates that no matching data was found, without using fixed field names, and in Markdown format.
     """
     prompt = f"""
 You are a data analyst assistant. The SQL query executed for the question:
@@ -239,7 +234,7 @@ and natural language response in markdown format explaining that there are no ma
 Do not include any specific field names or fixed data; instead, give a general explanation and any 
 possible insights that might help the user.
 """
-    # نستخدم عميل OpenAI الأصلي كما هو (client) لاستدعاء chat completions
+    # We use the original OpenAI client as is (client) to call chat completions
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -249,21 +244,18 @@ possible insights that might help the user.
     )
     return response.choices[0].message.content.strip()
 
-
-
-
 def execute_sql_with_iterative_refinement(query, max_retries=5):
     """
-    تنفيذ استعلام SQL مع تحسين تكراري (Iterative Query Refinement) باستخدام التفكير الذاتي.
-    تُدمج الدوال:
-      - self_reflect_and_replan: لإعادة صياغة الاستعلام عند وقوع خطأ.
-      - is_response_satisfactory: لفحص ما إذا كانت الاستجابة المُحسّنة جيدة.
-      - auto_recursive_reasoning: لمحاولة تحسين الاستجابة تلقائيًا.
+    Execute an SQL query with Iterative Query Refinement using self-reflection.
+    Functions are integrated:
+      - self_reflect_and_replan: To reformulate the query when an error occurs.
+      - is_response_satisfactory: To check if the refined response is satisfactory.
+      - auto_recursive_reasoning: To attempt automatic response improvement.
     
-    إذا فشلت كل المحاولات تُعاد DataFrame فارغ.
+    If all attempts fail, an empty DataFrame is returned.
     """
     current_query = query
-    # نفترض أن get_all_table_schemas() مُعرفة وتُعيد وصف الجداول
+    # Assume that get_all_table_schemas() is defined and returns the table schema descriptions
     context = {"schema": get_all_table_schemas()}
     attempt = 0
     error_message = ""
@@ -277,9 +269,9 @@ def execute_sql_with_iterative_refinement(query, max_retries=5):
             error_message = str(e)
             logging.error(f"Attempt {attempt+1} failed with error: {error_message}")
         
-        # إعادة صياغة الاستعلام باستخدام self_reflect_and_replan
+        # Reformulating the query using self_reflect_and_replan
         refined_query = self_reflect_and_replan(current_query, error_message, context)
-        # إذا لم تكن الاستجابة المُحسنة مرضية، استخدام auto_recursive_reasoning لتحسينها
+        # If the refined response is unsatisfactory, use auto_recursive_reasoning to improve it
         if not is_response_satisfactory(refined_query):
             refined_query = auto_recursive_reasoning(refined_query, max_depth=3)
         
@@ -287,7 +279,7 @@ def execute_sql_with_iterative_refinement(query, max_retries=5):
         logging.info(f"Retrying with refined query (attempt {attempt+1}/{max_retries}): {current_query}")
         attempt += 1
     
-    # في حالة استنفاذ المحاولات، نجرب تنفيذ الاستعلام مرة أخيرة؛ وإن فشل نُعيد DataFrame فارغ
+    # If all attempts are exhausted, try executing the query one last time; if it fails, return an empty DataFrame
     try:
         df = execute_sql_query(current_query)
         return df if df is not None else pd.DataFrame()
@@ -295,28 +287,24 @@ def execute_sql_with_iterative_refinement(query, max_retries=5):
         logging.error(f"Final attempt failed: {final_e}")
         return pd.DataFrame()
 
-
-
-import json
-
 def save_conversation(user_id, question, answer, classification, feedback=None):
     try:
-        # تجميع المحادثة في كائن JSON
+        # Aggregate the conversation into a JSON object
         conversation_data = {
             "question": question,
             "answer": answer,
             "classification": classification
         }
 
-        # تحويل الكائن إلى سلسلة JSON
+        # Convert the object into a JSON string
         response_json = json.dumps(conversation_data, ensure_ascii=False)
 
-        # إنشاء سجل جديد في قاعدة البيانات
+        # Create a new record in the database
         db_session = SessionLocal()
         new_conversation = Conversation(
             user_id=user_id,
-            question=question,  # يمكن حذف هذا الحقل إذا كنت تريد حفظ كل شيء في `response`
-            response=response_json,  # حفظ المحادثة كـ JSON
+            question=question,  # This field can be omitted if you want to save everything in response
+            response=response_json,  #Save the conversation as JSON
             feedback=feedback,
             classification=classification
         )
@@ -325,7 +313,7 @@ def save_conversation(user_id, question, answer, classification, feedback=None):
         db_session.refresh(new_conversation)
         db_session.close()
 
-        # إرجاع معرف المحادثة
+        # Return the conversation ID
         return new_conversation.conversation_id
     except Exception as e:
         print(f"Error saving conversation: {e}")
@@ -341,13 +329,13 @@ from sklearn.cluster import KMeans
 
 def fetch_all_data():
     db_session = SessionLocal()
-    # استخراج المحادثات
+    # Extract conversations
     conversations = db_session.query(Conversation).all()
-    # استخراج التغذية الراجعة
+    # Extract feedback
     feedbacks = db_session.query(Feedback).all()
     db_session.close()
 
-    # تحويل المحادثات إلى قائمة قواميس
+    # Convert conversations into a list of dictionaries
     conv_data = [{
         "conversation_id": conv.conversation_id,
         "user_id": conv.user_id,
@@ -357,7 +345,7 @@ def fetch_all_data():
         "feedback": conv.feedback
     } for conv in conversations]
 
-    # تحويل التغذية الراجعة إلى قائمة قواميس
+    #Convert feedback into a list of dictionaries
     feedback_data = [{
         "feedback_id": fb.feedback_id,
         "conversation_id": fb.conversation_id,
@@ -371,27 +359,27 @@ def analyze_question_patterns():
     conv_data, _ = fetch_all_data()
     df_conversations = pd.DataFrame(conv_data)
 
-    # تجهيز نص الأسئلة وتحويله إلى متجهات
+    # Prepare question text and convert it into vectors
     vectorizer = TfidfVectorizer(stop_words='arabic')
     X = vectorizer.fit_transform(df_conversations['question'].astype(str))
 
-    # تطبيق KMeans للتجميع
+    # Apply KMeans for clustering
     n_clusters = 5
     kmeans = KMeans(n_clusters=n_clusters, random_state=42)
     kmeans.fit(X)
 
     df_conversations['cluster'] = kmeans.labels_
     pattern_counts = df_conversations['cluster'].value_counts()
-    print("أنماط الأسئلة الأكثر شيوعاً:\n", pattern_counts)
+    print("Most common question patterns:\n", pattern_counts)
 
 
-# دالة إرسال البريد الإلكتروني بصيغة HTML
-def send_email_html(to_addresses, subject, html_body, smtp_server="apexexperts.net", smtp_port=465, username="ai@apexexperts.net", password="Ahmed@_240615"):
+# Function to send email in format HTML
+def send_email_html(to_addresses, subject, html_body, smtp_server="YOUR_SMTP_SERVER", smtp_port=465, username="YOUR_USER_NAME", password="YOUR_PASSWORD"):
     msg = MIMEText(html_body, "html", "utf-8")
     msg = MIMEMultipart()
     msg["Subject"] = subject
     msg["From"] = username
-    # إذا كانت القائمة، قم بتجميعها لرأس الرسالة
+    # If it's a list, concatenate it for the email header
     if isinstance(to_addresses, list):
         msg["To"] = ", ".join(to_addresses)
     else:
@@ -408,8 +396,8 @@ def send_email_html(to_addresses, subject, html_body, smtp_server="apexexperts.n
         return False
 
 def send_weekly_report():
-    subject = "التقرير الأسبوعي"
-    body = "<h1>التقرير الأسبوعي</h1><p>هذا هو التقرير الأسبوعي.</p>"
+    subject = "Weekly Report"
+    body = "<h1>Weekly Report</h1><p>This is the weekly report.</p>"
     to_email = "ahmed-alsaied@msn.com"
     send_email_html(to_email, subject, body)
 
@@ -667,62 +655,35 @@ def natural_language_to_dml_action(question):
         schema_summary = get_all_table_schemas()
 
         prompt = f"""
-You are an Oracle database expert. Always generate valid Oracle syntax, with the ability to execute any complex queries, as well as add, modify, and delete data. You have complete knowledge of all tables and data in the database and can provide effective solutions to any database-related issues. Your tasks include:
-
+You are an Oracle database expert. Always generate valid Oracle syntax, with the ability to execute any complex queries, as well as add, modify, and delete data. 
+You have complete knowledge of all tables and data in the database and can provide effective solutions to any database-related issues. Your tasks include:
 Executing complex SQL queries:
-
 Do not use multi-row insert with VALUES (...),(...) style.
-
 Use either multiple INSERT statements or the Oracle INSERT ALL syntax. 
-
 Writing queries to extract required data from tables.
-
 Using JOIN, GROUP BY, HAVING, SUBQUERIES, and other advanced operations.
-
 Optimizing queries to ensure optimal performance.
-
 Managing data:
-
 Adding new data to tables using INSERT.
-
 Updating existing data using UPDATE.
-
 Deleting data using DELETE.
-
 Analyzing data:
-
 Analyzing relationships between tables and understanding the database structure.
-
 Identifying data issues and providing solutions to fix them.
-
 Creating and modifying tables:
-
 Creating new tables using CREATE TABLE.
-
 Modifying table structures using ALTER TABLE.
-
 Dropping tables using DROP TABLE.
-
 Managing indexes:
-
 Creating indexes to improve query performance.
-
 Analyzing existing indexes and determining the need for modifications.
-
 Providing reports and results:
-
 Delivering clear and organized results for queries.
-
 Generating reports summarizing the required data.
-
 Troubleshooting:
-
 Analyzing errors in queries and fixing them.
-
 Providing solutions for any issues related to data integrity or performance.
-
 You are familiar with all tables, columns, and relationships between them, and you can provide accurate and effective answers to any questions or requests related to Oracle databases.
-
 Database schema:
 {schema_summary}
 
