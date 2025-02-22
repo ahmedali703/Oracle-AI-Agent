@@ -45,7 +45,6 @@ A sophisticated AI-powered chatbot that interacts with an Oracle database to pro
 3. **Setup Environment Variables**
    Create a `.env` file and configure the following:
    ```sh
-   SECRET_KEY=your_secret_key
    ORACLE_USER=HR
    ORACLE_PASSWORD=HR
    ORACLE_DSN=localhost/xepdb1
