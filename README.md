@@ -17,7 +17,6 @@ A sophisticated AI-powered chatbot that interacts with an Oracle database to pro
 - **Backend**: Flask, Flask-Session, SQLAlchemy, oracledb
 - **Database**: Oracle XE 21c
 - **AI & NLP**: OpenAI API, LangChain
-- **React.js**
 - **Machine Learning**: Scikit-learn (TF-IDF, KMeans)
 - **Scheduling & Automation**: APScheduler, Schedule
 
@@ -26,7 +25,6 @@ A sophisticated AI-powered chatbot that interacts with an Oracle database to pro
 ### Prerequisites
 - Python 3.11+
 - Oracle Database XE 21c (Installed locally)
-- NodeJS
 - Redis (for session management)
 
 ### Setup Instructions
